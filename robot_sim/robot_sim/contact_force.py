@@ -20,7 +20,7 @@ def get_contact_force(model, data, geom_name, apply=True):
                 f = contact_force * data.contact[i].frame[:3]
             else:
                 f = data.contact[i].frame.reshape(3, 3).T @ contact_force[0:3]
-            forces.append(f)
+            forces.append(-f)
             positions.append(p)
         if data.contact[i].geom2 == geom_id:
             p = data.contact[i].pos
@@ -31,7 +31,7 @@ def get_contact_force(model, data, geom_name, apply=True):
                 f = contact_force * data.contact[i].frame[:3]
             else:
                 f = data.contact[i].frame.reshape(3, 3).T @ contact_force[0:3]
-            forces.append(-f)
+            forces.append(f)
             positions.append(p)
     if apply:
         return np.array(forces), np.array(positions)

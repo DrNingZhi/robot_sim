@@ -210,3 +210,45 @@ class RobotForcePositionController:
 
         tau += jac.T @ (S @ (self.kp_pos * pos_err + self.kd_pos * vel_err))
         return tau
+
+
+class RobotAdmittanceController3d:
+    def __init__(self, dt, M, B, K, robot_model, ee_body_name, ee_point_on_body):
+        self.M = np.diag(M)
+        self.B = np.diag(B)
+        self.K = np.diag(K)
+        self.dt = dt
+        self.robot_model = robot_model
+        self.ee_body_name = ee_body_name
+        self.ee_point_on_body = ee_point_on_body
+        self.delta_q = 0.0
+        self.delta_qd = 0.0
+
+    def update(self, f, q, qd, q_ref, qd_ref):
+        if len(f) == 0:
+            ff = np.zeros(3)
+        else:
+            ff = np.sum(f, axis=0)
+        Jac = self.robot_model.jacobian(q, self.ee_body_name, self.ee_point_on_body)
+        Jac_d = self.robot_model.jacobian_d(
+            q, qd, self.ee_body_name, self.ee_point_on_body
+        )
+        Jac_ref = self.robot_model.jacobian(
+            q_ref, self.ee_body_name, self.ee_point_on_body
+        )
+
+        pos, _ = self.robot_model.forward_kinematics(
+            q, self.ee_body_name, self.ee_point_on_body
+        )
+        pos_ref, _ = self.robot_model.forward_kinematics(
+            q_ref, self.ee_body_name, self.ee_point_on_body
+        )
+        vel = Jac @ qd
+        vel_ref = Jac_ref @ qd_ref
+        xdd = np.linalg.inv(self.M) @ (
+            ff - self.B @ (vel[:3] - vel_ref[:3]) - self.K @ (pos - pos_ref)
+        )
+        qdd = np.linalg.pinv(Jac[:3]) @ (xdd - (Jac_d @ qd)[:3])
+        self.delta_qd += self.dt * qdd
+        self.delta_q += self.dt * self.delta_qd
+        return self.delta_q, self.delta_qd
