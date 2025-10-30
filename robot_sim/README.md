@@ -71,3 +71,11 @@ End-effector force-position hybrid control. Apply constant force on a movable bl
 ```
 python sim_arm_force_pos2.py
 ```
+
+### (4) Admittance control
+
+see https://zhuanlan.zhihu.com/p/1967358941055915966
+
+```
+python sim_arm_admittance.py
+```
