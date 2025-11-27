@@ -79,3 +79,35 @@ see https://zhuanlan.zhihu.com/p/1967358941055915966
 ```
 python sim_arm_admittance.py
 ```
+
+## 2. Trajectory planning
+
+### (1) A star algorithm
+see https://zhuanlan.zhihu.com/p/1960099548056781292
+```
+python sim_A_star.py
+```
+
+## 3. Collision detection
+
+see https://zhuanlan.zhihu.com/p/1977502768504792829
+
+To test the definition and visualization of a collision object.
+```
+python test_collision.py
+```
+
+To test the collision detection between two objects.
+```
+python test_collision_detection.py
+```
+
+To test the self collision detection of arm
+```
+python test_arm_self_collision_detection.py
+```
+
+To test the collision detection of arm and objects
+```
+python test_arm_collision_detection.py
+```

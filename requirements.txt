@@ -3,3 +3,6 @@ scipy
 matplotlib
 mujoco
 pynput
+trimesh
+pyvista
+networkx

@@ -2,6 +2,10 @@ import numpy as np
 import mujoco
 from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation
+import trimesh
+import copy
+import pyvista as pv
+from .collision import Collision
 
 
 class RobotModel:
@@ -12,6 +16,7 @@ class RobotModel:
         self.dof = self.model.nv
         self.joint_lower_limits = self.model.jnt_range[:, 0]
         self.joint_upper_limits = self.model.jnt_range[:, 1]
+        self.init_collision()
 
     def forward_kinematics(self, q, body_name, point_at_body=np.zeros(3)):
         self.data.qpos = q.copy()
@@ -109,3 +114,168 @@ class RobotModel:
         M_matrix = np.zeros((self.dof, self.dof))
         mujoco.mj_fullM(self.model, M_matrix, self.data.qM)
         return M_matrix
+
+    def init_collision(self):
+        self.collisions = [[] for _ in range(self.model.nbody - 1)]
+        for i in range(self.model.ngeom):
+            body_id = int(self.model.geom_bodyid[i])
+            if body_id == 0:
+                continue  # body 0 (worldbody) is not considered
+
+            geom_name = self.model.geom(i).name
+            geom_type = self.model.geom_type[i]
+            if geom_type == mujoco.mjtGeom.mjGEOM_SPHERE:
+                r = self.model.geom_size[i][0]
+                mesh = trimesh.primitives.Sphere(r)
+            elif geom_type == mujoco.mjtGeom.mjGEOM_CAPSULE:
+                r = self.model.geom_size[i][0]
+                L = self.model.geom_size[i][1] * 2
+                mesh = trimesh.primitives.Capsule(r, L)
+            elif geom_type == mujoco.mjtGeom.mjGEOM_CYLINDER:
+                r = self.model.geom_size[i][0]
+                L = self.model.geom_size[i][1] * 2
+                mesh = trimesh.primitives.Cylinder(r, L)
+            elif geom_type == mujoco.mjtGeom.mjGEOM_BOX:
+                L = self.model.geom_size[i] * 2
+                mesh = trimesh.primitives.Box(L, T)
+            elif geom_type == mujoco.mjtGeom.mjGEOM_MESH:
+                mesh_id = self.model.geom_dataid[i]
+                vertex_start_id = self.model.mesh_vertadr[mesh_id]
+                vertex_num = self.model.mesh_vertnum[mesh_id]
+                face_start_id = self.model.mesh_faceadr[mesh_id]
+                face_num = self.model.mesh_facenum[mesh_id]
+                vertex = self.model.mesh_vert[
+                    vertex_start_id : (vertex_start_id + vertex_num)
+                ]
+                faces = self.model.mesh_face[face_start_id : (face_start_id + face_num)]
+                mesh = trimesh.Trimesh(vertex, faces)
+            else:
+                print(f"Geom id {i} type is not supported! It will be ignored!")
+                mesh = None
+            if mesh is not None:
+                self.collisions[body_id - 1].append(Collision(i, mesh))
+
+    def update_collision_pose(self, q, level):
+        self.data.qpos = q.copy()
+        mujoco.mj_kinematics(self.model, self.data)
+        for i in range(len(self.collisions)):
+            for j in range(len(self.collisions[i])):
+                geom_id = self.collisions[i][j].id
+                p = self.data.geom_xpos[geom_id].copy()
+                R = self.data.geom_xmat[geom_id].reshape((3, 3)).copy()
+                T = np.eye(4)
+                T[:3, :3] = R
+                T[:3, 3] = p
+                self.collisions[i][j].apply_transform(T, level)
+
+    def self_collision_detection(
+        self, q, level, exclude_adjacent_links=True, exclude_body_pairs=[]
+    ):
+        results = []
+        distances = []
+        self.update_collision_pose(q, level)
+        num_body = self.model.nbody - 1
+        for i in range(num_body - 1):
+            for j in range(i + 1, num_body):
+                if exclude_adjacent_links and abs(i - j) == 1:
+                    continue
+
+                body_name1 = self.model.body(i + 1).name
+                body_name2 = self.model.body(j + 1).name
+                if [body_name1, body_name2] in exclude_body_pairs or [
+                    body_name2,
+                    body_name1,
+                ] in exclude_body_pairs:
+                    continue
+
+                res = dict()
+                res["body1"] = body_name1
+                res["body2"] = body_name2
+                res["min_dis"] = self.body_pair_collision_detection(
+                    self.collisions[i], self.collisions[j], level
+                )
+                results.append(res)
+                distances.append(res["min_dis"])
+        min_dis = np.min(np.array(distances))
+        return min_dis, results
+
+    def body_pair_collision_detection(self, collisions1, collisions2, level):
+        distances = []
+        for i in range(len(collisions1)):
+            for j in range(len(collisions2)):
+                dis = collisions1[i].collision_detection(collisions2[j], level)
+                distances.append(dis)
+        return np.min(np.array(distances))
+
+    def collision_detection(self, q, objects: list, level):
+        self.update_collision_pose(q, level)
+        num_links = len(self.collisions)
+        num_objs = len(objects)
+        distances = np.zeros((num_objs, num_links))
+        for i in range(num_objs):
+            for j in range(num_links):
+                distances[i, j] = self.body_pair_collision_detection(
+                    [objects[i]], self.collisions[j], level
+                )
+        return distances
+
+    # def collision_detection(self, q, objects: str):
+    #     self.update_collision_pose(q)
+    #     num_body = len(self.collisions)
+    #     collision_manager1 = trimesh.collision.CollisionManager()
+    #     for i in range(num_body):
+    #         num_geom = len(self.collisions[i])
+    #         for j in range(num_geom):
+    #             collision_manager1.add_object(
+    #                 "body" + str(i) + "geom" + str(j),
+    #                 self.collisions[i][j]["trimesh_transform"],
+    #             )
+    #     collision_manager2 = trimesh.collision.CollisionManager()
+    #     for i in range(len(objects)):
+    #         collision_manager2.add_object("obj" + str(i), objects[i])
+    #     dis = collision_manager1.min_distance_other(collision_manager2)
+    #     return dis
+
+    def show_collision(self, q, level, objects=[], obj_tforms=[]):
+        plotter = pv.Plotter()
+        R0 = np.eye(3)
+        p0 = np.zeros(3)
+        plotter.add_arrows(p0, R0[:, 0] * 0.1, color="red")
+        plotter.add_arrows(p0, R0[:, 1] * 0.1, color="green")
+        plotter.add_arrows(p0, R0[:, 2] * 0.1, color="blue")
+
+        self.data.qpos = q.copy()
+        mujoco.mj_kinematics(self.model, self.data)
+        for i in range(len(self.collisions)):
+            for j in range(len(self.collisions[i])):
+                geom_id = self.collisions[i][j].id
+                p = self.data.geom_xpos[geom_id].copy()
+                R = self.data.geom_xmat[geom_id].reshape((3, 3)).copy()
+                T = np.eye(4)
+                T[:3, :3] = R
+                T[:3, 3] = p
+                if level == 0:
+                    self.collisions[i][j].show(plotter, T, show_bounding_sphere=True)
+                elif level == 1:
+                    self.collisions[i][j].show(
+                        plotter, T, show_bounding_box_oriented=True
+                    )
+                elif level == 2:
+                    self.collisions[i][j].show(plotter, T, show_convex_hull=True)
+                elif level == 3:
+                    self.collisions[i][j].show(plotter, T)
+                else:
+                    raise ValueError("Error level! Please give 1~3!")
+
+        for i in range(len(objects)):
+            if level == 0:
+                objects[i].show(plotter, obj_tforms[i], show_bounding_sphere=True)
+            elif level == 1:
+                objects[i].show(plotter, obj_tforms[i], show_bounding_box_oriented=True)
+            elif level == 2:
+                objects[i].show(plotter, obj_tforms[i], show_convex_hull=True)
+            elif level == 3:
+                objects[i].show(plotter, obj_tforms[i])
+            else:
+                raise ValueError("Error level! Please give 1~3!")
+        plotter.show()
