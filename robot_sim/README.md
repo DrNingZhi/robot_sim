@@ -102,12 +102,23 @@ To test the collision detection between two objects.
 python test_collision_detection.py
 ```
 
-To test the self collision detection of arm
+To test the self collision detection of arm.
 ```
 python test_arm_self_collision_detection.py
 ```
 
-To test the collision detection of arm and objects
+To test the collision detection of arm and objects.
 ```
 python test_arm_collision_detection.py
+```
+
+see https://zhuanlan.zhihu.com/p/1985101999377760977
+
+Similarly, to test the sphere-fitting collision detection:
+
+```
+python test_sphere_fitting.py
+python test_sph_fit_collision_detection.py
+python test_arm_self_sph_fit_collision_detection.py
+python test_arm_sph_fit_collision_detection.py
 ```

@@ -6,3 +6,4 @@ pynput
 trimesh
 pyvista
 networkx
+rtree

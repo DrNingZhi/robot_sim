@@ -1,8 +1,11 @@
 import trimesh
 import numpy as np
 
-sphere = trimesh.primitives.Sphere(1.0)
-print(type(sphere) == trimesh.primitives.Trimesh)
+a = np.zeros(7)
+b = np.random.rand(5)
 
-a = np.array([0.0, 1.0])
-print(type(a) == np.ndarray)
+c = a[:, np.newaxis] + b[np.newaxis, :]
+
+print(c.shape)
+print(c)
+print(np.min(c))
