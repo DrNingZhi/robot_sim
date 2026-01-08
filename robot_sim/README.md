@@ -80,6 +80,14 @@ see https://zhuanlan.zhihu.com/p/1967358941055915966
 python sim_arm_admittance.py
 ```
 
+### (5) Null space
+
+see https://zhuanlan.zhihu.com/p/1992710728243758668
+
+```
+python sim_arm_null_space.py
+```
+
 ## 2. Trajectory planning
 
 ### (1) A star algorithm

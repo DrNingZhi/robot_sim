@@ -9,15 +9,24 @@ from .collision import Collision, SphereFittingCollision
 
 
 class RobotModel:
-    def __init__(self, model: str):
+    def __init__(self, model: str, collision_detect_enable=False):
         self.model = mujoco.MjModel.from_xml_path(model)
         self.data = mujoco.MjData(self.model)
         self.dt = self.model.opt.timestep
         self.dof = self.model.nv
         self.joint_lower_limits = self.model.jnt_range[:, 0]
         self.joint_upper_limits = self.model.jnt_range[:, 1]
-        self.init_collision()
-        self.init_sphere_fitting_collision()
+        self.joint_ranges = self.joint_upper_limits - self.joint_lower_limits
+        self.joint_mid = (self.joint_lower_limits + self.joint_upper_limits) / 2
+
+        self.collision_detect_enable = collision_detect_enable
+        if self.collision_detect_enable:
+            self.init_collision()
+            self.init_sphere_fitting_collision()
+
+    def rand_configuration(self):
+        q = np.random.rand(self.dof) * self.joint_ranges + self.joint_lower_limits
+        return q
 
     def forward_kinematics(self, q, body_name, point_at_body=np.zeros(3)):
         self.data.qpos = q.copy()
@@ -37,12 +46,11 @@ class RobotModel:
         res = minimize(
             self.ik_cost,
             q_init,
-            bounds=self.model.jnt_range,
             args=(target, body_name, q_init, point_at_body, smooth),
         )
         q = res.x
 
-        err = self.ik_cost(q, target, body_name, q_init, point_at_body, smooth)
+        err = self.ik_cost(q, target, body_name, q_init, point_at_body, False)
         if err > 1e-3:
             print("Warning: IK err is larger, " + str(err))
         return q
@@ -53,8 +61,18 @@ class RobotModel:
         R_tar = target[:3, :3]
         cost1 = np.linalg.norm(p - p_tar) ** 2
         cost2 = np.linalg.norm(Rotation.from_matrix(R @ R_tar.T).as_rotvec()) ** 2
+
+        # convert joint limits to cost
+        q_normalize = (q - self.joint_lower_limits) / self.joint_ranges * 2.0 - 1.0
+        y1 = q_normalize - 0.8
+        y2 = -0.8 - q_normalize
+        y1[y1 < 0] = 0.0
+        y2[y2 < 0] = 0.0
+        y = (1.0 / 0.2**12) * (y1**12 + y2**12)
+        cost3 = np.sum(y)
+
         if not smooth:
-            return 1000000.0 * cost1 + 3282.8 * cost2
+            return 1000000.0 * cost1 + 3282.8 * cost2 + 1.0 * cost3
 
         cost3 = np.linalg.norm(q - q_init) ** 2 / self.dof
         return 1000000.0 * cost1 + 3282.8 * cost2 + 32.8 * cost3
@@ -115,6 +133,13 @@ class RobotModel:
         M_matrix = np.zeros((self.dof, self.dof))
         mujoco.mj_fullM(self.model, M_matrix, self.data.qM)
         return M_matrix
+
+    def null_space_projection(self, q, body_name, point_on_body=np.zeros(3)):
+        if self.dof <= 6:
+            print("WARNING: there is no null space for non-redundant manipulator!")
+        J = self.jacobian(q, body_name, point_on_body)
+        P = np.eye(self.dof) - np.linalg.pinv(J) @ J
+        return P
 
     def init_collision(self):
         self.collisions = [[] for _ in range(self.model.nbody - 1)]
