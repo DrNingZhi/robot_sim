@@ -57,9 +57,9 @@
                     <inertial pos="1.0517e-02 -4.252e-03 6.1597e-02" mass="7.35522e-01" fullinertia="1.2516e-02 1.0027e-02 4.8150e-03 -4.2800e-04 -1.1960e-03 -7.4100e-04" />
                     <joint name="panda_joint7" pos="0 0 0" axis="0 0 1" limited="true" range="-2.8973 2.8973" damping="0.0638" frictionloss="1.2109" />
                     <geom type="mesh" material="panda" mesh="link7" quat="0.9238795 0 0 -0.3826834" condim="1" conaffinity="0"/>
-                    <geom type="cylinder" rgba="1 0.1 0.1 1" size="0.005 0.05" pos="0.05 0 0.1" quat="0.7071 0 0.7071 0" contype="0" conaffinity="0"/>
+                    <!-- <geom type="cylinder" rgba="1 0.1 0.1 1" size="0.005 0.05" pos="0.05 0 0.1" quat="0.7071 0 0.7071 0" contype="0" conaffinity="0"/>
                     <geom type="cylinder" rgba="0.1 1 0.1 1" size="0.005 0.05" pos="0 0.05 0.1" quat="0.7071 0.7071 0 0" contype="0" conaffinity="0"/>
-                    <geom type="cylinder" rgba="0.1 0.1 1 1" size="0.005 0.05" pos="0 0 0.15" quat="1 0 0 0" contype="0" conaffinity="0"/>
+                    <geom type="cylinder" rgba="0.1 0.1 1 1" size="0.005 0.05" pos="0 0 0.15" quat="1 0 0 0" contype="0" conaffinity="0"/> -->
                     
                     <!-- <body name="panda_link8" pos="0 0 0.107">
                       <body name="panda_hand" euler="0 0 -0.785398163397">

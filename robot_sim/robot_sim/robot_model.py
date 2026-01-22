@@ -21,7 +21,7 @@ class RobotModel:
 
         self.collision_detect_enable = collision_detect_enable
         if self.collision_detect_enable:
-            self.init_collision()
+            # self.init_collision()
             self.init_sphere_fitting_collision()
 
     def rand_configuration(self):
@@ -328,6 +328,7 @@ class RobotModel:
                 sph_fit = SphereFittingCollision(i, mesh)
                 sph_fit.cluster()
                 self.sphere_fitting_collisions[body_id - 1].append(sph_fit)
+            print(f"第{i}个几何的球拟合碰撞器已生成")
 
     def update_sphere_fitting_collision_pose(self, q):
         self.data.qpos = q.copy()

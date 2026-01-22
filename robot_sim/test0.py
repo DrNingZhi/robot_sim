@@ -1,11 +1,19 @@
 import trimesh
 import numpy as np
 
-a = np.zeros(7)
-b = np.random.rand(5)
 
-c = a[:, np.newaxis] + b[np.newaxis, :]
+def add(a, b):
+    return a + b
 
-print(c.shape)
-print(c)
-print(np.min(c))
+
+def fun(c, *param):
+    c = add(*param)
+    return c
+
+
+c = 0
+a = 1
+b = 2
+cc = fun(c, a, b)
+
+print(cc)

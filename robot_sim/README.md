@@ -88,6 +88,11 @@ see https://zhuanlan.zhihu.com/p/1992710728243758668
 python sim_arm_null_space.py
 ```
 
+see https://zhuanlan.zhihu.com/p/1997786441699304459
+```
+python sim_arm_null_space_obstacle_avoidance.py
+```
+
 ## 2. Trajectory planning
 
 ### (1) A star algorithm

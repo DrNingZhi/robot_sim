@@ -134,7 +134,7 @@ class Collision:
 
 
 class SphereFittingCollision:
-    def __init__(self, id, arg1, arg2=None):
+    def __init__(self, id, arg1, arg2=None, num_groups=10):
         """
         Define a triangle mesh for collision detection.
 
@@ -162,7 +162,7 @@ class SphereFittingCollision:
         self.grouped_points = None
         self.sphere_centers = None
         self.sphere_radius = None
-        # self.cluster(10)
+        self.cluster(num_groups)
 
     def uniform_sampling(self, resolution=None):
         bounds = self.trimesh.bounds
@@ -201,7 +201,7 @@ class SphereFittingCollision:
                 grouped_points[j] = self.points[group_ids == j]
                 cluster_centers[j] = np.mean(grouped_points[j], axis=0)
             inertia = self.calc_inertia(grouped_points, cluster_centers)
-            print(f"iter: {i}, inertia: {inertia}")
+            # print(f"iter: {i}, inertia: {inertia}")
             if abs(last_inertia - inertia) < inertia * convergence_threshold:
                 break
             last_inertia = inertia

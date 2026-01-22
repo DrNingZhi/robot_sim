@@ -3,7 +3,7 @@
 # Setup and Run examples
 
 ```
-git clone 
+git clone git@github.com:DrNingZhi/robot_sim.git
 cd robot_sim
 pip install -r requirements.txt
 cd robot_sim
