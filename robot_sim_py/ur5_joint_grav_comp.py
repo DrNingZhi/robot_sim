@@ -5,7 +5,7 @@ import time
 import matplotlib.pyplot as plt
 
 from robot_sim.robot_model import RobotModel
-from robot_sim.motion_planner import load_trajectory_data
+from robot_sim.motion_planner_ur5 import load_trajectory_data
 from robot_sim.controller import RobotPDController
 
 mjcf_file = "model/ur5/ur5.xml"
@@ -44,7 +44,8 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             q_act[step], body_name="wrist_3_link", point_at_body=np.array([0, 0, 0.05])
         )
 
-        tau_ref = robot_model.inverse_dynamics(q[step], qd[step], qdd[step])
+        tau_ref = robot_model.gravity_torque(q[step])
+        # tau_ref = robot_model.inverse_dynamics(q[step], qd[step], qdd[step])
         data.ctrl = robot_controller.update_with_feedforward(
             data.qpos, data.qvel, q[step], qd[step], tau_ref
         )

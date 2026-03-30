@@ -5,7 +5,7 @@ import time
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation
 from robot_sim.robot_model import RobotModel
-from robot_sim.motion_planner import load_trajectory_data
+from robot_sim.motion_planner_ur5 import load_trajectory_data
 from robot_sim.controller import RobotJacInvController, RobotJacTController
 
 mjcf_file = "model/ur5/ur5.xml"
@@ -46,12 +46,14 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             data.qpos, body_name="wrist_3_link", point_at_body=np.array([0, 0, 0.05])
         )
 
-        data.ctrl = robot_controller.update(
+        data.ctrl = robot_controller.update_with_feedforward(
             data.qpos,
             data.qvel,
             pos[step],
             orientation,
             vel[step],
+            np.zeros(3),
+            acc[step],
             np.zeros(3),
         )
         mujoco.mj_step(model, data)

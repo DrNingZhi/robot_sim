@@ -1,116 +1,35 @@
 import numpy as np
 from scipy.spatial.transform import Rotation
 from .robot_model import RobotModel
-
-
-def interpolation(t, T, p):
-    A = np.array(
-        [
-            [T**5, T**4, T**3],
-            [5.0 * T**4, 4.0 * T**3, 3.0 * T**2],
-            [20.0 * T**3, 12.0 * T**2, 6.0 * T],
-        ]
-    )
-    B = np.array([p, 0.0, 0.0])
-    a = np.linalg.inv(A) @ B
-    x = a[0] * t**5 + a[1] * t**4 + a[2] * t**3
-    xd = 5.0 * a[0] * t**4 + 4.0 * a[1] * t**3 + 3.0 * a[2] * t**2
-    xdd = 20.0 * a[0] * t**3 + 12.0 * a[1] * t**2 + 6.0 * a[2] * t
-    return x, xd, xdd
-
-
-def circular_trajectory(center, radius, rotation, dt, period):
-    """
-    Parameters:
-    ----------
-    center: np.ndarray(3,)
-        Center position of spatial circle
-    radius: float
-        Tadius of the spatial circle
-    rotation: np.ndarray(3,3)
-        Pose of the spatial circle, defined by rotation matrix.
-        The primitive pose is and on x-y plane.
-    dt: float
-        Time step.
-    period: float
-        Period to accomplish the circle trajectory.
-
-    Return:
-    ----------
-    t: np.ndarray(n,)
-        Discrete time series of the trajectory.
-    pos: np.ndarray(n,3)
-        End-effector position series of the trajectory.
-    vel: np.ndarray(n,3)
-        End-effector velocity series of the trajectory.
-    acc: np.ndarray(n,3)
-        End-effector acceleration series of the trajectory.
-    """
-
-    num_steps = int(period / dt)
-    t = np.linspace(0, period, num_steps + 1)
-    theta, theta_d, theta_dd = interpolation(t, period, np.pi * 2)
-    pos = np.zeros((num_steps + 1, 3))
-    pos[:, 0] = radius * np.cos(theta)
-    pos[:, 1] = radius * np.sin(theta)
-    pos[:, 2] = 0.0
-    vel = np.zeros((num_steps + 1, 3))
-    vel[:, 0] = theta_d * radius * np.cos(theta + np.pi / 2)
-    vel[:, 1] = theta_d * radius * np.sin(theta + np.pi / 2)
-    vel[:, 2] = 0.0
-    acc_t = np.zeros((num_steps + 1, 3))
-    acc_n = np.zeros((num_steps + 1, 3))
-    acc_t[:, 0] = theta_dd * radius * np.cos(theta + np.pi / 2)
-    acc_t[:, 1] = theta_dd * radius * np.sin(theta + np.pi / 2)
-    acc_t[:, 2] = 0.0
-    acc_n[:, 0] = theta_d**2 * radius * np.cos(theta + np.pi)
-    acc_n[:, 1] = theta_d**2 * radius * np.sin(theta + np.pi)
-    acc_n[:, 2] = 0.0
-    acc = acc_n + acc_t
-    pos = center + (rotation @ pos.T).T
-    vel = (rotation @ vel.T).T
-    acc = (rotation @ acc.T).T
-    return t, pos, vel, acc
-
-
-def trajectory_ik(robot_model, pos, vel, acc, orientation, body_name, point_on_body):
-    dof = robot_model.dof
-    num_steps = len(pos)
-    q = np.zeros((num_steps, dof))
-    qd = np.zeros((num_steps, dof))
-    qdd = np.zeros((num_steps, dof))
-    for i in range(num_steps):
-        target = np.eye(4)
-        target[:3, 3] = pos[i]
-        target[:3, :3] = orientation
-        q[i] = robot_model.inverse_kinematics(
-            target, body_name, q[i - 1], point_on_body, smooth=(not i == 0)
-        )
-        vel_a = np.array([vel[i, 0], vel[i, 1], vel[i, 2], 0.0, 0.0, 0.0])
-        acc_a = np.array([acc[i, 0], acc[i, 1], acc[i, 2], 0.0, 0.0, 0.0])
-        qd[i], qdd[i] = robot_model.inverse_kinematics_d(
-            q[i], vel_a, acc_a, body_name, point_on_body
-        )
-        if i % 100 == 0:
-            print("轨迹生成中，第" + str(i) + "步，共" + str(num_steps) + "步")
-    return q, qd, qdd
+from .motion_planner import circular_trajectory
 
 
 def plan_ee_circle(robot_model, T_init, T_motion, T_hold):
     dt = robot_model.dt
     dof = robot_model.dof
+
+    # 生成末端圆形轨迹
     center = np.array([0.8, 0.0, 1.2])
     radius = 0.1
-    rotation = Rotation.from_rotvec([0.0, np.pi / 2, 0.0]).as_matrix()
+    rotation = Rotation.from_rotvec([0.0, np.pi / 2, 0.0])
     period = T_motion
-    t, pos, vel, acc = circular_trajectory(center, radius, rotation, dt, period)
-    orientation = Rotation.from_rotvec([0.0, np.pi / 2, 0.0]).as_matrix()
-    body_name = "wrist_3_link"
-    point_at_body = np.array([0, 0, 0.05])
-    q, qd, qdd = trajectory_ik(
-        robot_model, pos, vel, acc, orientation, body_name, point_at_body
+    t, pos, vel, acc = circular_trajectory(
+        center, radius, rotation.as_matrix(), dt, period
     )
 
+    # 求解轨迹ik
+    num_step = len(pos)
+    quat = rotation.as_quat(scalar_first=True)
+    quats = np.tile(quat, (num_step, 1))
+    body_name = "wrist_3_link"
+    point_at_body = np.array([0, 0, 0.05])
+    ang_vel = np.zeros((num_step, 3))
+    ang_acc = np.zeros((num_step, 3))
+    q, qd, qdd = robot_model.trajectory_ik(
+        pos, vel, acc, quats, ang_vel, ang_acc, body_name, point_at_body=point_at_body
+    )
+
+    # 扩展初始化和结束静止阶段
     init_steps = int(T_init / dt)
     hold_steps = int(T_hold / dt)
 

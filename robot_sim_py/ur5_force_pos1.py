@@ -5,7 +5,7 @@ import time
 import matplotlib.pyplot as plt
 from robot_sim.robot_model import RobotModel
 from scipy.spatial.transform import Rotation
-from robot_sim.motion_planner import load_trajectory_data
+from robot_sim.motion_planner_ur5 import load_trajectory_data
 from robot_sim.controller import RobotForcePositionController
 from robot_sim.contact_force import get_contact_force, show_contact_force
 

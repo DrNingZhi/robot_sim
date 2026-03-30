@@ -24,8 +24,11 @@ robot_model = RobotModel(rob_mjcf_file)
 target = np.eye(4)
 target[:3, :3] = Rotation.from_rotvec([0.0, np.pi / 2, 0.0]).as_matrix()
 target[:3, 3] = np.array([0.8, 0.0, 1.1])
-q0 = robot_model.inverse_kinematics(
-    target, "wrist_3_link", point_at_body=np.array([0, 0, 0.05]), smooth=False
+q0 = robot_model.fast_ik(
+    target,
+    "wrist_3_link",
+    q_init=robot_model.joint_mid,
+    point_at_body=np.array([0, 0, 0.05]),
 )
 data.qpos = np.hstack((q0, np.zeros(3)))
 data.qvel = np.zeros(dof)

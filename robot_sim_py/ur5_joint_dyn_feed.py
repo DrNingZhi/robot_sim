@@ -3,10 +3,10 @@ import mujoco
 import mujoco.viewer
 import time
 import matplotlib.pyplot as plt
-from scipy.spatial.transform import Rotation
+
 from robot_sim.robot_model import RobotModel
-from robot_sim.motion_planner import load_trajectory_data
-from robot_sim.controller import RobotJacInvController, RobotJacTController
+from robot_sim.motion_planner_ur5 import load_trajectory_data
+from robot_sim.controller import RobotPDController
 
 mjcf_file = "model/ur5/ur5.xml"
 
@@ -20,41 +20,33 @@ dof = model.nv
 # t, q, qd, qdd, pos, vel, acc = plan_ee_circle(1.0, 5.0, 1.0)
 robot_model = RobotModel(mjcf_file)
 t, q, qd, qdd, pos, vel, acc = load_trajectory_data("data/traj_1_5_1.txt", dof)
-orientation = Rotation.from_rotvec([0.0, np.pi / 2, 0.0]).as_matrix()
-
 
 # Initialize joint states
 data.qpos = q[0]
-data.qvel = qd[0]
+data.qvel = np.zeros(dof)
 
-kp = np.array([2000.0, 2000.0, 5000.0, 100.0, 100.0, 100.0])
-kd = np.array([20.0, 20.0, 50.0, 1.0, 1.0, 1.0])
-robot_controller = RobotJacTController(
-    kp, kd, robot_model, "wrist_3_link", np.array([0, 0, 0.05])
-)
+# Initialize controller
+kp = np.array([1000.0, 1000.0, 1000.0, 10.0, 10.0, 0.1])
+kd = np.array([10.0, 10.0, 10.0, 0.1, 0.1, 0.001])
+robot_controller = RobotPDController(kp, kd)
 
 # record actual data
+q_act = np.zeros((q.shape))
 pos_act = np.zeros((pos.shape))
-mat_act = np.zeros((3, 3, len(t)))
 
 step = 0
 with mujoco.viewer.launch_passive(model, data) as viewer:
     while viewer.is_running() and step < len(t):
         step_start = time.time()
 
-        pos_act[step], mat_act[:, :, step] = robot_model.forward_kinematics(
-            data.qpos, body_name="wrist_3_link", point_at_body=np.array([0, 0, 0.05])
+        q_act[step] = data.qpos
+        pos_act[step], _ = robot_model.forward_kinematics(
+            q_act[step], body_name="wrist_3_link", point_at_body=np.array([0, 0, 0.05])
         )
 
+        tau_ref = robot_model.inverse_dynamics(q[step], qd[step], qdd[step])
         data.ctrl = robot_controller.update_with_feedforward(
-            data.qpos,
-            data.qvel,
-            pos[step],
-            orientation,
-            vel[step],
-            np.zeros(3),
-            acc[step],
-            np.zeros(3),
+            data.qpos, data.qvel, q[step], qd[step], tau_ref
         )
         mujoco.mj_step(model, data)
 
@@ -66,30 +58,26 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
             time.sleep(time_until_next_step)
 
 
+plt.figure(constrained_layout=True)
+for i in range(6):
+    plt.subplot(2, 3, i + 1)
+    plt.plot(t, q[:, i], "b-")
+    plt.plot(t, q_act[:, i], "r--")
+    plt.xlabel("t")
+    plt.ylabel("q of Joint " + str(i + 1))
+
 fig = plt.figure()
-ax = fig.add_subplot(111, projection="3d")  # 启用3D坐标轴
+ax = fig.add_subplot(111, projection="3d")
 ax.plot(pos[:, 0], pos[:, 1], pos[:, 2], "b-", label="plan")
 ax.plot(pos_act[:, 0], pos_act[:, 1], pos_act[:, 2], "r--", label="act")
 plt.axis("equal")
 plt.legend()
 
 plt.figure()
-plt.subplot(121)
 err = np.linalg.norm(pos - pos_act, axis=1)
-print("最大位置误差：", np.max(err))
+print("最大误差：", np.max(err))
 plt.plot(t, err)
 plt.xlabel("t")
-plt.ylabel("tracking error (m)")
-
-plt.subplot(122)
-pose_err = np.zeros(len(t))
-for i in range(len(t)):
-    R = orientation.T @ mat_act[:, :, i]
-    w = Rotation.from_matrix(R).as_rotvec()
-    pose_err[i] = np.linalg.norm(w)
-print("最大角度误差：", np.max(pose_err))
-plt.plot(t, pose_err)
-plt.xlabel("t")
-plt.ylabel("orientation error (rad)")
+plt.ylabel("tracking error")
 
 plt.show()

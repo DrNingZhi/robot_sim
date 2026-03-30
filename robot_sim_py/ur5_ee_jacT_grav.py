@@ -5,7 +5,7 @@ import time
 import matplotlib.pyplot as plt
 from scipy.spatial.transform import Rotation
 from robot_sim.robot_model import RobotModel
-from robot_sim.motion_planner import load_trajectory_data
+from robot_sim.motion_planner_ur5 import load_trajectory_data
 from robot_sim.controller import RobotJacInvController, RobotJacTController
 
 mjcf_file = "model/ur5/ur5.xml"
