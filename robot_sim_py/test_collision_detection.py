@@ -14,8 +14,8 @@ from robot_sim.collision import Collision, CollisionDetectionMethod
 # method = CollisionDetectionMethod.SphereByBoundingBox
 # method = CollisionDetectionMethod.SphereByConvexHull
 # method = CollisionDetectionMethod.SphereByOriginalMesh
-# method = CollisionDetectionMethod.ConvexHull
-method = CollisionDetectionMethod.OriginalMesh
+method = CollisionDetectionMethod.ConvexHull
+# method = CollisionDetectionMethod.OriginalMesh
 
 model_file = "model/panda/meshes/link2.obj"
 tri_mesh = trimesh.load(model_file)
@@ -24,19 +24,20 @@ mesh1 = Collision(0, tri_mesh, method)
 mesh2 = Collision(1, trimesh.primitives.Sphere(0.05), method)
 
 T1 = np.eye(4)
-T1[:3, :3] = Rotation.from_rotvec([1.0, 0.0, 0.0]).as_matrix()
-T1[:3, 3] = np.array([0.0, 0.0, 0.02])
+# T1[:3, :3] = Rotation.from_rotvec([1.0, 0.0, 0.0]).as_matrix()
+T1[:3, 3] = np.array([0.0, 0.0, 0.0])
 
 T2 = np.eye(4)
-T2[:3, :3] = Rotation.from_rotvec([0.0, 1.0, 0.0]).as_matrix()
-T2[:3, 3] = np.array([0.0, -0.01, -0.15])
+# T2[:3, :3] = Rotation.from_rotvec([0.0, 1.0, 0.0]).as_matrix()
+T2[:3, 3] = np.array([0.0, 0.0, -0.06])
 
-t0 = time.time()
 mesh1.apply_transform(T1)
 mesh2.apply_transform(T2)
+t0 = time.time()
 dis = mesh1.collision_detection(mesh2)
 print("Min distance: ", dis)
-print("计算耗时：", time.time() - t0)
+use_time = (time.time() - t0) * 1000
+print("计算耗时：", use_time)
 
 plotter = pv.Plotter()
 R0 = np.eye(3)
