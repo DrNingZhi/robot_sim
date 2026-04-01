@@ -8,8 +8,22 @@ from scipy.spatial.transform import Rotation
 
 from robot_sim.robot_model import RobotModel
 from robot_sim.controller import RobotPDController
-from robot_sim.collision import Collision, SphereFittingCollision
 from robot_sim.auto_gradient import auto_gradient
+from robot_sim.collision import Collision, CollisionDetectionMethod
+from robot_sim.collision_robot import RobotCollisionDetector, CollisionDetectionConfig
+
+# method = CollisionDetectionMethod.BoundingSphere
+# method = CollisionDetectionMethod.BoundingBox
+# method = CollisionDetectionMethod.BoundingCylinder
+# method = CollisionDetectionMethod.OrientedBoundingBox
+method = CollisionDetectionMethod.SphereByBoundingCylinder
+# method = CollisionDetectionMethod.SphereByBoundingBox
+# method = CollisionDetectionMethod.SphereByConvexHull
+# method = CollisionDetectionMethod.SphereByOriginalMesh
+# method = CollisionDetectionMethod.ConvexHull
+# method = CollisionDetectionMethod.OriginalMesh
+
+config = CollisionDetectionConfig()  # 默认都考虑
 
 mjcf_file = "model/panda/panda.xml"
 model = mujoco.MjModel.from_xml_path(mjcf_file)
@@ -17,7 +31,8 @@ data = mujoco.MjData(model)
 
 dt = model.opt.timestep
 dof = model.nv
-robot_model = RobotModel(mjcf_file, collision_detect_enable=True)
+robot_model = RobotModel(mjcf_file)
+robot_collision_detector = RobotCollisionDetector(robot_model, method, config)
 
 q0 = np.array([0.9835, -0.0698, 1.9154, -1.0633, -2.8973, 0.4735, -2.3276])
 
@@ -37,14 +52,11 @@ obs_move_period = 8.0
 v_obs = (p_obs_2 - p_obs_1) / (obs_move_period / 2.0)
 
 pose_obs = np.eye(4)
-# obs = Collision(0, trimesh.primitives.Sphere(radius=0.05))
-# obs.apply_transform(pose, level=1)
-obs = SphereFittingCollision(0, trimesh.primitives.Sphere(radius=0.05), num_groups=1)
+obs = Collision(100, trimesh.primitives.Sphere(radius=0.05), method)
 
 
 def calc_distance(q, obs):
-    # dis = robot_model.collision_detection(q, [obs], level=1)
-    dis = robot_model.sphere_fitting_collision_detection(q, [obs])
+    dis = robot_collision_detector.collision_detection(q, [obs])
     return np.min(dis)
 
 
@@ -53,7 +65,7 @@ q = q0.copy()
 reach_limit = False
 with mujoco.viewer.launch_passive(model, data) as viewer:
     while viewer.is_running():
-        # step_start = time.time()
+        step_start = time.time()
 
         t_obs = t % obs_move_period
         if t_obs <= (obs_move_period / 2.0):
@@ -83,7 +95,7 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         mujoco.mj_step(model, data)
 
         # visualize virtual obstacle
-        # viewer.user_scn.ngeom = 0
+        viewer.user_scn.ngeom = 0
         mujoco.mjv_initGeom(
             viewer.user_scn.geoms[0],
             mujoco.mjtGeom.mjGEOM_SPHERE,
@@ -97,6 +109,5 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         viewer.sync()
         t = t + dt
 
-        # time_until_next_step = dt - (time.time() - step_start)
-        # if time_until_next_step > 0:
-        #     time.sleep(time_until_next_step)
+        # fps = 1.0 / (time.time() - step_start)
+        # print(f"fps: {fps}")

@@ -49,7 +49,7 @@ Then, run the example:
 |ur5_force_pos1.py | [机械臂末端力位混合控制](https://zhuanlan.zhihu.com/p/1953863647915934385) |
 |ur5_force_pos2.py | [机械臂末端力位混合控制](https://zhuanlan.zhihu.com/p/1953863647915934385) |
 |ur5_admittance.py | [机械臂末端导纳控制](https://zhuanlan.zhihu.com/p/1967358941055915966) |
-|待更新.py | [碰撞检测(待更新)](https://zhuanlan.zhihu.com/p/1977502768504792829) |
+|test_collision.py | [碰撞检测(待更新)](https://zhuanlan.zhihu.com/p/1977502768504792829) |
 |待更新.py | [碰撞检测(待更新)](https://zhuanlan.zhihu.com/p/1985101999377760977) |
 |panda_null_space.py | [机械臂零空间运动](https://zhuanlan.zhihu.com/p/1992710728243758668) |
 |panda_null_space_obstacle.py | [机械臂零空间避障(待更新)](https://zhuanlan.zhihu.com/p/1997786441699304459) |

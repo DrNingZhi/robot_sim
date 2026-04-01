@@ -5,11 +5,12 @@ from scipy.spatial.transform import Rotation
 import trimesh
 import copy
 import pyvista as pv
-from .collision import Collision, SphereFittingCollision
+from .collision_robot import RobotCollisionDetector
+from .collision import CollisionDetectionMethod
 
 
 class RobotModel:
-    def __init__(self, model: str, collision_detect_enable=False):
+    def __init__(self, model: str):
         self.model = mujoco.MjModel.from_xml_path(model)
         self.data = mujoco.MjData(self.model)
         self.dt = self.model.opt.timestep
@@ -18,7 +19,6 @@ class RobotModel:
         self.joint_upper_limits = self.model.jnt_range[:, 1]
         self.joint_ranges = self.joint_upper_limits - self.joint_lower_limits
         self.joint_mid = (self.joint_lower_limits + self.joint_upper_limits) / 2
-        # self.collision_detector = None
 
     def rand_configuration(self):
         q = np.random.rand(self.dof) * self.joint_ranges + self.joint_lower_limits

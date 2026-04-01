@@ -3,38 +3,48 @@ import trimesh
 import pyvista as pv
 import copy
 import time
+from enum import Enum
+from scipy.spatial.transform import Rotation
+
+from .collision_utils import CollisionGenerator, CollisionVisualizer, CollisionDetector
+from .transform_utils import rotation_matrix_from_z_axis
 
 
-def trimesh_to_pv(mesh):
-    vertices = mesh.vertices
-    faces = mesh.faces
-    pv_faces = np.hstack((np.ones((len(faces), 1), dtype=int) * 3, faces))
-    pv_mesh = pv.PolyData(vertices, pv_faces)
-    return pv_mesh
+class CollisionDetectionMethod(Enum):
+    BoundingSphere = 0
+    BoundingBox = 1
+    BoundingCylinder = 2
+    OrientedBoundingBox = 3
+
+    SphereByBoundingCylinder = 4
+    SphereByBoundingBox = 5
+    SphereByConvexHull = 6
+    SphereByOriginalMesh = 7
+
+    ConvexHull = 8
+    OriginalMesh = 9
 
 
 class Collision:
-    def __init__(self, id, arg1, arg2=None):
+    def __init__(
+        self,
+        id,
+        mesh,
+        method: CollisionDetectionMethod,
+    ):
         """
         Define a triangle mesh for collision detection.
 
         Parameters:
-            option1:
-                arg1: trimesh.primitives.Trimesh
-                arg2: None
-            option2:
-                arg1: vertices: np.ndarray(n,3)
-                arg2: faces: np.ndarray(n,3)
+            id: id
+            mesh: trimesh.primitives.Trimesh
+            method: CollisionDetectionMethod
         """
         self.id = id
-        if arg2 is not None:
-            self.vertices = arg1
-            self.faces = arg2
-            self.trimesh = trimesh.Trimesh(self.vertices, self.faces)
-        else:
-            self.trimesh = arg1
-            self.vertices = self.trimesh.vertices
-            self.faces = self.trimesh.faces
+        self.trimesh = mesh
+        self.vertices = self.trimesh.vertices
+        self.faces = self.trimesh.faces
+        self.method = method
 
         # if not self.trimesh.is_watertight:
         #     trimesh.repair.fill_holes(self.trimesh)
@@ -47,236 +57,239 @@ class Collision:
         # if not self.trimesh.is_watertight:
         #     raise ValueError("mesh is still not watertight!")
 
-        bounding_sphere = self.trimesh.bounding_sphere
-        center = np.mean(bounding_sphere.vertices, axis=0)
-        radius = np.mean(np.linalg.norm(bounding_sphere.vertices - center, axis=1))
-        self.bounding_sphere = np.hstack((center, radius))
+        # 原始碰撞检测模型
+        self.bounding_sphere = None  # [球心，半径]
+        self.bounding_box = None  # (2,3)，[min, max]坐标
+        self.bounding_cylinder = None  # [起点，终点，半径]
+        self.oriented_bounding_box = None  # [中心， 半边长， 旋转矩阵]
+        self.spheres = None  # [球心，半径]
+        self.convex_hull = None  # Trimesh
+        self.original_mesh = self.trimesh
 
-        self.obb = self.trimesh.bounding_box_oriented
-        self.convex_hull = self.trimesh.convex_hull
+        # 施加空间运动后的碰撞检测模型（最终用于显示和检测）
+        self.bounding_sphere_t = None  # [球心，半径]
+        self.bounding_box_t = None  # (2,3)，[min, max]坐标
+        self.bounding_cylinder_t = None  # [起点，终点，半径]
+        self.oriented_bounding_box_t = None  # [中心， 半边长， 旋转矩阵]
+        self.spheres_t = None  # [球心，半径]
+        self.convex_hull_t = None  # Trimesh
+        self.original_mesh_t = self.trimesh.copy()
 
-    def apply_transform(self, tform, level):
-        if level == 0:
-            self.bounding_sphere_t = self.bounding_sphere.copy()
-            self.bounding_sphere_t[:3] += tform[:3, 3]
-        elif level == 1:
-            self.obb_t = self.obb.copy().apply_transform(tform)
-        elif level == 2:
-            self.convex_hull_t = self.convex_hull.copy().apply_transform(tform)
-        elif level == 3:
-            self.trimesh_t = self.trimesh.copy().apply_transform(tform)
-        else:
-            raise ValueError("Error level! Please give 0~3!")
+        self.initialize()
 
-    def show(
-        self,
-        plotter,
-        transform=np.eye(4),
-        show_ori_mesh=True,
-        show_convex_hull=False,
-        show_bounding_box=False,
-        show_bounding_box_oriented=False,
-        show_bounding_sphere=False,
-    ):
-        self.apply_transform(transform, 3)
-        if show_ori_mesh:
-            pv_mesh = trimesh_to_pv(self.trimesh_t)
-            plotter.add_mesh(pv_mesh, show_edges=True)
-        if show_convex_hull:
-            convex_mesh = trimesh_to_pv(self.trimesh_t.convex_hull)
-            plotter.add_mesh(convex_mesh, show_edges=True, opacity=0.5)
-        if show_bounding_box:
-            bounding_box = trimesh_to_pv(self.trimesh_t.bounding_box)
-            plotter.add_mesh(bounding_box, show_edges=True, opacity=0.5)
-        if show_bounding_box_oriented:
-            bounding_box_oriented = trimesh_to_pv(self.trimesh_t.bounding_box_oriented)
-            plotter.add_mesh(bounding_box_oriented, show_edges=True, opacity=0.5)
-        if show_bounding_sphere:
-            bounding_sphere = trimesh_to_pv(self.trimesh_t.bounding_sphere)
-            plotter.add_mesh(bounding_sphere, show_edges=False, opacity=0.5)
-
-    def collision_detection(self, mesh, level):
-        """
-        collision detection between self and another Collision object
-        level = 1: use obb
-        level = 2: use convex_hull
-        level = 3: use complete mesh
-        """
-        if level == 0:
-            cdis = np.linalg.norm(
-                self.bounding_sphere_t[:3] - mesh.bounding_sphere_t[:3]
-            )
-            dis = cdis - self.bounding_sphere_t[3] - mesh.bounding_sphere_t[3]
-            return dis
-        if level == 1:
-            collision_manager1 = trimesh.collision.CollisionManager()
-            collision_manager1.add_object("mesh1", self.obb_t)
-            collision_manager2 = trimesh.collision.CollisionManager()
-            collision_manager2.add_object("mesh2", mesh.obb_t)
-            dis = collision_manager1.min_distance_other(collision_manager2)
-            return dis
-        elif level == 2:
-            collision_manager1 = trimesh.collision.CollisionManager()
-            collision_manager1.add_object("mesh1", self.convex_hull_t)
-            collision_manager2 = trimesh.collision.CollisionManager()
-            collision_manager2.add_object("mesh2", mesh.convex_hull_t)
-            dis = collision_manager1.min_distance_other(collision_manager2)
-            return dis
-        elif level == 3:
-            collision_manager1 = trimesh.collision.CollisionManager()
-            collision_manager1.add_object("mesh1", self.trimesh_t)
-            collision_manager2 = trimesh.collision.CollisionManager()
-            collision_manager2.add_object("mesh2", mesh.trimesh_t)
-            dis = collision_manager1.min_distance_other(collision_manager2)
-            return dis
-        else:
-            raise ValueError("Error level! Please give 1~3!")
-
-
-class SphereFittingCollision:
-    def __init__(self, id, arg1, arg2=None, num_groups=10):
-        """
-        Define a triangle mesh for collision detection.
-
-        Parameters:
-            option1:
-                arg1: trimesh.primitives.Trimesh
-                arg2: None
-            option2:
-                arg1: vertices: np.ndarray(n,3)
-                arg2: faces: np.ndarray(n,3)
-        """
-        self.id = id
-        if arg2 is not None:
-            self.vertices = arg1
-            self.faces = arg2
-            self.trimesh = trimesh.Trimesh(self.vertices, self.faces)
-        else:
-            self.trimesh = arg1
-            self.vertices = self.trimesh.vertices
-            self.faces = self.trimesh.faces
-
-        self.points = None
-        self.uniform_sampling()
-
-        self.grouped_points = None
-        self.sphere_centers = None
-        self.sphere_radius = None
-        self.cluster(num_groups)
-
-    def uniform_sampling(self, resolution=None):
-        bounds = self.trimesh.bounds
-        lower_bounds = bounds[0]
-        upper_bounds = bounds[1]
-        sizes = upper_bounds - lower_bounds
-        if resolution is None:
-            resolution = np.min(sizes) / 10.0
-
-        upper = np.ceil(upper_bounds / resolution, dtype=float) * resolution + 1.0e-6
-        lower = np.floor(lower_bounds / resolution, dtype=float) * resolution
-
-        x = np.arange(lower[0], upper[0], resolution)
-        y = np.arange(lower[1], upper[1], resolution)
-        z = np.arange(lower[2], upper[2], resolution)
-        X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
-        points = np.stack([X, Y, Z], axis=-1)
-        points = points.reshape(-1, 3)
-        in_mesh = self.trimesh.contains(points)
-        self.points = points[in_mesh]
-
-    def cluster(self, num_groups=10, max_step=1000, convergence_threshold=1e-9):
-        num_points = len(self.points)
-        indices = np.random.choice(num_points, num_groups, replace=False)
-        cluster_centers = self.points[indices]
-        grouped_points = [None for _ in range(num_groups)]
-        last_inertia = 0.0
-        for i in range(max_step):
-            diff = np.sum(
-                (self.points[:, np.newaxis, :] - cluster_centers[np.newaxis, :, :])
-                ** 2,
-                axis=2,
-            )
-            group_ids = np.argmin(diff, axis=1)
-            for j in range(num_groups):
-                grouped_points[j] = self.points[group_ids == j]
-                cluster_centers[j] = np.mean(grouped_points[j], axis=0)
-            inertia = self.calc_inertia(grouped_points, cluster_centers)
-            # print(f"iter: {i}, inertia: {inertia}")
-            if abs(last_inertia - inertia) < inertia * convergence_threshold:
-                break
-            last_inertia = inertia
-
-        self.grouped_points = grouped_points
-        self.sphere_centers = np.zeros((num_groups, 3))
-        self.sphere_radius = np.zeros(num_groups)
-        for i in range(num_groups):
-            convex_mesh = trimesh.convex.convex_hull(self.grouped_points[i])
-            bounding_sphere = convex_mesh.bounding_sphere
-            center = np.mean(bounding_sphere.vertices, axis=0)
-            radius = np.mean(np.linalg.norm(bounding_sphere.vertices - center, axis=1))
-            self.sphere_centers[i] = center
-            self.sphere_radius[i] = radius
-
-    def calc_inertia(self, grouped_points, cluster_centers):
-        iner = 0.0
-        for i in range(len(grouped_points)):
-            iner += np.sum(np.square(grouped_points[i] - cluster_centers[i]))
-        return iner
-
-    def show(
-        self,
-        show_mesh=True,
-        show_points=True,
-        show_cluster=True,
-        show_spheres=True,
-    ):
-        plotter = pv.Plotter()
-        if show_mesh:
-            plotter.add_mesh(trimesh_to_pv(self.trimesh), show_edges=True, opacity=0.2)
-        if show_points:
-            plotter.add_points(self.points, color="r")
-        if show_cluster:
-            n = len(self.grouped_points)
-            colors = np.random.rand(n, 3)
-            for i in range(n):
-                plotter.add_points(self.grouped_points[i], color=colors[i])
-        if show_spheres:
-            n = len(self.sphere_centers)
-            for i in range(n):
-                sphere = pv.Sphere(
-                    radius=self.sphere_radius[i],
-                    center=self.sphere_centers[i],
+    def initialize(self):
+        match self.method:
+            case CollisionDetectionMethod.BoundingSphere:
+                self.bounding_sphere = CollisionGenerator.get_bounding_sphere(
+                    self.trimesh
                 )
-                plotter.add_mesh(
-                    sphere, color="lightblue", show_edges=True, opacity=0.2
+                self.bounding_sphere_t = copy.deepcopy(self.bounding_sphere)
+                return
+            case CollisionDetectionMethod.BoundingBox:
+                self.bounding_box = self.trimesh.bounds.copy()
+                self.bounding_box_t = copy.deepcopy(self.bounding_box)
+                return
+            case CollisionDetectionMethod.BoundingCylinder:
+                self.bounding_cylinder = CollisionGenerator.get_bounding_cylinder(
+                    self.trimesh
                 )
-        plotter.show()
+                self.bounding_cylinder_t = copy.deepcopy(self.bounding_cylinder)
+                return
+            case CollisionDetectionMethod.OrientedBoundingBox:
+                self.oriented_bounding_box = (
+                    CollisionGenerator.get_oriented_bounding_box(self.trimesh)
+                )
+                self.oriented_bounding_box_t = copy.deepcopy(self.oriented_bounding_box)
+                return
+            case CollisionDetectionMethod.SphereByBoundingCylinder:
+                self.bounding_cylinder = CollisionGenerator.get_bounding_cylinder(
+                    self.trimesh
+                )
+                self.bounding_cylinder_t = copy.deepcopy(self.bounding_cylinder)
+                self.spheres = CollisionGenerator.get_spheres_from_cylinder(
+                    self.bounding_cylinder
+                )
+                self.spheres_t = copy.deepcopy(self.spheres)
+                return
+            case CollisionDetectionMethod.SphereByBoundingBox:
+                self.oriented_bounding_box = (
+                    CollisionGenerator.get_oriented_bounding_box(self.trimesh)
+                )
+                self.oriented_bounding_box_t = copy.deepcopy(self.oriented_bounding_box)
+                self.spheres = CollisionGenerator.get_spheres_from_obb(
+                    self.oriented_bounding_box
+                )
+                self.spheres_t = copy.deepcopy(self.spheres)
+                return
+            case CollisionDetectionMethod.SphereByConvexHull:
+                self.convex_hull = self.trimesh.convex_hull
+                self.convex_hull_t = self.convex_hull.copy()
+                self.spheres = CollisionGenerator.get_spheres_from_mesh(
+                    self.convex_hull
+                )
+                self.spheres_t = copy.deepcopy(self.spheres)
+                return
+            case CollisionDetectionMethod.SphereByOriginalMesh:
+                self.spheres = CollisionGenerator.get_spheres_from_mesh(self.trimesh)
+                self.spheres_t = copy.deepcopy(self.spheres)
+                return
+            case CollisionDetectionMethod.ConvexHull:
+                self.convex_hull = self.trimesh.convex_hull
+                self.convex_hull_t = self.convex_hull.copy()
+                return
+            case CollisionDetectionMethod.OriginalMesh:
+                return
 
     def apply_transform(self, tform):
-        self.sphere_centers_t = self.sphere_centers.copy()
-        p = tform[:3, 3]
-        R = tform[:3, :3]
-        self.sphere_centers_t = p + (R @ self.sphere_centers_t.T).T
+        translation = tform[:3, 3]
+        rotation = tform[:3, :3]
+        self.original_mesh_t = self.original_mesh.copy().apply_transform(tform)
+        match self.method:
+            case CollisionDetectionMethod.BoundingSphere:
+                self.bounding_sphere_t = copy.deepcopy(self.bounding_sphere)
+                self.bounding_sphere_t[0] = (
+                    translation + rotation @ self.bounding_sphere_t[0]
+                )
+                return
+            case CollisionDetectionMethod.BoundingBox:
+                self.bounding_box_t = self.original_mesh_t.bounds.copy()
+                return
+            case CollisionDetectionMethod.BoundingCylinder:
+                self.bounding_cylinder_t = copy.deepcopy(self.bounding_cylinder)
+                self.bounding_cylinder_t[0] = (
+                    translation + rotation @ self.bounding_cylinder_t[0]
+                )
+                self.bounding_cylinder_t[1] = (
+                    translation + rotation @ self.bounding_cylinder_t[1]
+                )
+                return
+            case CollisionDetectionMethod.OrientedBoundingBox:
+                self.oriented_bounding_box_t = copy.deepcopy(self.oriented_bounding_box)
+                self.oriented_bounding_box_t[0] = (
+                    translation + rotation @ self.oriented_bounding_box_t[0]
+                )
+                self.oriented_bounding_box_t[2] = (
+                    rotation @ self.oriented_bounding_box_t[2]
+                )
+                return
+            case CollisionDetectionMethod.SphereByBoundingCylinder:
+                self.bounding_cylinder_t = copy.deepcopy(self.bounding_cylinder)
+                self.bounding_cylinder_t[0] = (
+                    translation + rotation @ self.bounding_cylinder_t[0]
+                )
+                self.bounding_cylinder_t[1] = (
+                    translation + rotation @ self.bounding_cylinder_t[1]
+                )
+                self.spheres_t = copy.deepcopy(self.spheres)
+                self.spheres_t[0] = translation + (rotation @ self.spheres_t[0].T).T
+                return
+            case CollisionDetectionMethod.SphereByBoundingBox:
+                self.oriented_bounding_box_t = copy.deepcopy(self.oriented_bounding_box)
+                self.oriented_bounding_box_t[0] = (
+                    translation + rotation @ self.oriented_bounding_box_t[0]
+                )
+                self.oriented_bounding_box_t[2] = (
+                    rotation @ self.oriented_bounding_box_t[2]
+                )
+                self.spheres_t = copy.deepcopy(self.spheres)
+                self.spheres_t[0] = translation + (rotation @ self.spheres_t[0].T).T
+                return
+            case CollisionDetectionMethod.SphereByConvexHull:
+                self.convex_hull_t = self.convex_hull.copy().apply_transform(tform)
+                self.spheres_t = copy.deepcopy(self.spheres)
+                self.spheres_t[0] = translation + (rotation @ self.spheres_t[0].T).T
+                return
+            case CollisionDetectionMethod.SphereByOriginalMesh:
+                self.spheres_t = copy.deepcopy(self.spheres)
+                self.spheres_t[0] = translation + (rotation @ self.spheres_t[0].T).T
+                return
+            case CollisionDetectionMethod.ConvexHull:
+                self.convex_hull_t = self.convex_hull.copy().apply_transform(tform)
+                return
+            case CollisionDetectionMethod.OriginalMesh:
+                return
 
-    def collision_detection(self, sphere_fitting_obj):
-        center1 = self.sphere_centers_t
-        center2 = sphere_fitting_obj.sphere_centers_t
-        cdis = np.linalg.norm(
-            center1[:, np.newaxis, :] - center2[np.newaxis, :, :], axis=2
+    def show(self, plotter):
+        plotter.add_mesh(
+            CollisionVisualizer.trimesh_to_pv(self.original_mesh_t),
+            show_edges=True,
+            opacity=0.8,
         )
+        match self.method:
+            case CollisionDetectionMethod.BoundingSphere:
+                CollisionVisualizer.add_sphere(plotter, self.bounding_sphere_t, 0.2)
+                return
+            case CollisionDetectionMethod.BoundingBox:
+                plotter.add_mesh(
+                    pv.Box(bounds=self.bounding_box_t.flatten(order="F")),
+                    opacity=0.2,
+                )
+                return
+            case CollisionDetectionMethod.BoundingCylinder:
+                CollisionVisualizer.add_cylinder(plotter, self.bounding_cylinder_t, 0.2)
+                return
+            case CollisionDetectionMethod.OrientedBoundingBox:
+                CollisionVisualizer.add_obb(plotter, self.oriented_bounding_box_t, 0.2)
+                return
+            case CollisionDetectionMethod.SphereByBoundingCylinder:
+                CollisionVisualizer.add_cylinder(plotter, self.bounding_cylinder_t, 0.2)
+                CollisionVisualizer.add_spheres(plotter, self.spheres_t, 0.5, True)
+                return
+            case CollisionDetectionMethod.SphereByBoundingBox:
+                CollisionVisualizer.add_obb(plotter, self.oriented_bounding_box_t, 0.2)
+                CollisionVisualizer.add_spheres(plotter, self.spheres_t, 0.5, True)
+                return
+            case CollisionDetectionMethod.SphereByConvexHull:
+                plotter.add_mesh(
+                    CollisionVisualizer.trimesh_to_pv(self.convex_hull_t),
+                    opacity=0.5,
+                    show_edges=True,
+                )
+                CollisionVisualizer.add_spheres(plotter, self.spheres_t, 0.5, True)
+                return
+            case CollisionDetectionMethod.SphereByOriginalMesh:
+                CollisionVisualizer.add_spheres(plotter, self.spheres_t, 0.5, True)
+                return
+            case CollisionDetectionMethod.ConvexHull:
+                plotter.add_mesh(
+                    CollisionVisualizer.trimesh_to_pv(self.convex_hull_t),
+                    opacity=0.5,
+                    show_edges=True,
+                )
+                return
+            case CollisionDetectionMethod.OriginalMesh:
+                return
 
-        radius1 = self.sphere_radius
-        radius2 = sphere_fitting_obj.sphere_radius
-        rdis = radius1[:, np.newaxis] + radius2[np.newaxis, :]
-
-        dis = np.min(cdis - rdis)
-        return dis
-
-    def show_spheres(self, plotter):
-        n = len(self.sphere_centers_t)
-        for i in range(n):
-            sphere = pv.Sphere(
-                radius=self.sphere_radius[i],
-                center=self.sphere_centers_t[i],
+    def collision_detection(self, collision):
+        if not self.method == collision.method:
+            raise TypeError(
+                "Collision detection methods are different. It is not supported!"
             )
-            plotter.add_mesh(sphere, color="lightblue", show_edges=True, opacity=0.5)
+
+        if self.method == CollisionDetectionMethod.BoundingSphere:
+            dis = CollisionDetector.sphere_sphere(
+                self.bounding_sphere_t, collision.bounding_sphere_t
+            )
+        elif self.method == CollisionDetectionMethod.BoundingBox:
+            dis = CollisionDetector.box_box(
+                self.bounding_box_t, collision.bounding_box_t
+            )
+        elif self.method == CollisionDetectionMethod.BoundingCylinder:
+            dis = CollisionDetector.cylinder_cylinder(
+                self.bounding_cylinder_t, collision.bounding_cylinder_t
+            )
+        elif self.method == CollisionDetectionMethod.OrientedBoundingBox:
+            dis = CollisionDetector.obb_obb(
+                self.oriented_bounding_box_t, collision.oriented_bounding_box_t
+            )
+        elif self.method == CollisionDetectionMethod.ConvexHull:
+            dis = CollisionDetector.mesh_mesh(
+                self.convex_hull_t, collision.convex_hull_t
+            )
+        elif self.method == CollisionDetectionMethod.OriginalMesh:
+            dis = CollisionDetector.mesh_mesh(
+                self.original_mesh_t, collision.original_mesh_t
+            )
+        else:  # all spheres cases
+            dis = CollisionDetector.spheres_spheres(self.spheres_t, collision.spheres_t)
+        return dis
