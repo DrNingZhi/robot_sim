@@ -15,8 +15,8 @@ mesh = trimesh.load(model_file)
 # method = CollisionDetectionMethod.SphereByBoundingCylinder
 # method = CollisionDetectionMethod.SphereByBoundingBox
 # method = CollisionDetectionMethod.SphereByConvexHull
-# method = CollisionDetectionMethod.SphereByOriginalMesh
-method = CollisionDetectionMethod.ConvexHull
+method = CollisionDetectionMethod.SphereByOriginalMesh
+# method = CollisionDetectionMethod.ConvexHull
 # method = CollisionDetectionMethod.OriginalMesh
 
 collision = Collision(0, mesh, method)

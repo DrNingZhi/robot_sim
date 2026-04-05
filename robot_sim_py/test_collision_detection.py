@@ -12,9 +12,9 @@ from robot_sim.collision import Collision, CollisionDetectionMethod
 # method = CollisionDetectionMethod.OrientedBoundingBox
 # method = CollisionDetectionMethod.SphereByBoundingCylinder
 # method = CollisionDetectionMethod.SphereByBoundingBox
-# method = CollisionDetectionMethod.SphereByConvexHull
+method = CollisionDetectionMethod.SphereByConvexHull
 # method = CollisionDetectionMethod.SphereByOriginalMesh
-method = CollisionDetectionMethod.ConvexHull
+# method = CollisionDetectionMethod.ConvexHull
 # method = CollisionDetectionMethod.OriginalMesh
 
 model_file = "model/panda/meshes/link2.obj"
