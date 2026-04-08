@@ -12,9 +12,9 @@ import trimesh
 # method = CollisionDetectionMethod.SphereByBoundingCylinder
 # method = CollisionDetectionMethod.SphereByBoundingBox
 # method = CollisionDetectionMethod.SphereByConvexHull
-# method = CollisionDetectionMethod.SphereByOriginalMesh
+method = CollisionDetectionMethod.SphereByOriginalMesh
 # method = CollisionDetectionMethod.ConvexHull
-method = CollisionDetectionMethod.OriginalMesh
+# method = CollisionDetectionMethod.OriginalMesh
 
 config = CollisionDetectionConfig()  # 默认都考虑
 
@@ -24,8 +24,8 @@ robot_model = RobotModel(mjcf_file)
 robot_collision_detector = RobotCollisionDetector(robot_model, method, config)
 
 # q = np.zeros(robot_model.dof)
-q = np.random.rand(robot_model.dof)
-# q = np.array([[0.6900721, 0.95876795, 0.06526024, 0.2282442, 0.66531103, 0.38351114]])
+# q = np.random.rand(robot_model.dof)
+q = np.array([[0.6900721, -0.95876795, 0.06526024, 0.2282442, 0.66531103, 0.38351114]])
 
 t0 = time.time()
 min_dis, results = robot_collision_detector.self_collision_detection(q)

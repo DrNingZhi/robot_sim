@@ -86,7 +86,6 @@ class RobotCollisionDetector:
     def update_collision_pose(self, q):
         self.robot_model.data.qpos = q.copy()
         mujoco.mj_kinematics(self.robot_model.model, self.robot_model.data)
-        kk = 0
         for i in range(len(self.collisions)):
             for j in range(len(self.collisions[i])):
                 geom_id = self.collisions[i][j].id
