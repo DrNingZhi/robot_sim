@@ -57,3 +57,4 @@ Then, run the example:
 |ur5_collision.py | [机器人碰撞检测](https://zhuanlan.zhihu.com/p/2025330180743344443) |
 |panda_null_space.py | [机械臂零空间运动](https://zhuanlan.zhihu.com/p/1992710728243758668) |
 |panda_null_space_obstacle.py | [机械臂零空间避障](https://zhuanlan.zhihu.com/p/1997786441699304459) |
+|g1_mink.py | [宇树g1基于mink实现全身控制](https://zhuanlan.zhihu.com/p/2074852037657998881) |
