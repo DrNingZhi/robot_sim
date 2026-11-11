@@ -16,6 +16,9 @@ class AStar:
         self.ranges = ranges
         self.resolution = resolution
         self.dimension = len(ranges)
+        self.heuristic_weights = np.sqrt(np.arange(1, self.dimension + 1)) - np.sqrt(
+            np.arange(self.dimension)
+        )
 
         self.open_list = []
         self.open_cost = []
@@ -57,7 +60,7 @@ class AStar:
             )
 
         self.close_list = np.array([start])
-        h0 = np.sum(np.abs(target - start))
+        h0 = self.heuristic(start.reshape(1, -1), target)[0]
         self.close_cost = np.array([[0.0, h0, h0]])
         self.close_parent = np.array([-1], dtype=int)
 
@@ -69,10 +72,14 @@ class AStar:
             np.linalg.norm(self.open_list - self.close_list[self.open_parent], axis=1)
             + self.close_cost[self.open_parent, 0]
         )
-        self.open_cost[:, 1] = np.sum(np.abs(self.open_list - target), axis=1)
+        self.open_cost[:, 1] = self.heuristic(self.open_list, target)
         self.open_cost[:, 2] = self.open_cost[:, 0] + self.open_cost[:, 1]
 
         while True:
+            # 判断是否无法找到路径
+            if len(self.open_list) == 0:
+                raise ValueError("Cannot find a path!")
+
             # 从open list取cost最小点，加入close list
             id = np.argmin(self.open_cost[:, 2])
             new_point = self.open_list[id]
@@ -101,9 +108,12 @@ class AStar:
             distances_open = np.linalg.norm(
                 (self.open_list[:, np.newaxis, :] - new_neighboring), axis=2
             )
-            points_in_open_list_id = np.where(
-                np.min(distances_open, axis=1) < self.resolution / 10
-            )[0]
+            if len(new_neighboring) > 0:
+                points_in_open_list_id = np.where(
+                    np.min(distances_open, axis=1) < self.resolution / 10
+                )[0]
+            else:
+                points_in_open_list_id = np.array([], dtype=int)
 
             # 更新已经在open_list中的点的cost和parent
             new_cost_G = new_cost[0] + np.linalg.norm(
@@ -117,7 +127,12 @@ class AStar:
             self.open_parent[need_update_id] = new_id
 
             # 其他未在open_list的新点
-            not_in_open_list = np.min(distances_open, axis=0) > self.resolution / 10
+            if len(self.open_list) > 0:
+                not_in_open_list = (
+                    np.min(distances_open, axis=0) > self.resolution / 10
+                )
+            else:
+                not_in_open_list = np.ones(len(new_neighboring), dtype=bool)
             new_neighboring = new_neighboring[not_in_open_list]
 
             # 更新新点的cost和parent，并加入open list
@@ -125,9 +140,7 @@ class AStar:
             new_neighboring_cost[:, 0] = new_cost[0] + np.linalg.norm(
                 new_point - new_neighboring, axis=1
             )
-            new_neighboring_cost[:, 1] = np.sum(
-                np.abs(new_neighboring - target), axis=1
-            )
+            new_neighboring_cost[:, 1] = self.heuristic(new_neighboring, target)
             new_neighboring_cost[:, 2] = (
                 new_neighboring_cost[:, 0] + new_neighboring_cost[:, 1]
             )
@@ -136,15 +149,12 @@ class AStar:
             self.open_cost = np.vstack((self.open_cost, new_neighboring_cost))
             self.open_parent = np.hstack((self.open_parent, new_neighboring_parent))
 
-            # 判断是否无法找到路径
-            if len(self.open_list) == 0:
-                raise ValueError("Cannot find a path!")
-
             # 判断是否到达目标点附近
-            diff = np.linalg.norm(target - self.open_list, axis=1)
-            if np.min(diff) < self.resolution * np.sqrt(self.dimension) / 2:
-                target_id = np.argmin(diff)
-                break
+            if len(self.open_list) > 0:
+                diff = np.linalg.norm(target - self.open_list, axis=1)
+                if np.min(diff) < self.resolution * np.sqrt(self.dimension) / 2:
+                    target_id = np.argmin(diff)
+                    break
 
         results = [self.open_list[target_id]]
         parent_id = self.open_parent[target_id]
@@ -152,7 +162,18 @@ class AStar:
             results.append(self.close_list[parent_id])
             parent_id = self.close_parent[parent_id]
 
-        return np.array(results)
+        return np.array(results[::-1])
+
+    def heuristic(self, points, target):
+        """
+        Admissible and consistent heuristic for grid search with diagonal
+        moves: sort coordinate differences in descending order
+        d1 >= d2 >= ... >= dn, then
+        h = sum_k (sqrt(k) - sqrt(k-1)) * d_k
+        (reduces to the octile distance in 2D).
+        """
+        d = np.sort(np.abs(points - target), axis=1)[:, ::-1]
+        return d @ self.heuristic_weights
 
     def check_points(self, points):
         """

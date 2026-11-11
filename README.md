@@ -51,6 +51,7 @@ Then, run the example:
 |ur5_force_pos2.py | [机械臂末端力位混合控制](https://zhuanlan.zhihu.com/p/1953863647915934385) |
 |ur5_admittance.py | [机械臂末端导纳控制](https://zhuanlan.zhihu.com/p/1967358941055915966) |
 |test_Astar.py | [避障轨迹规划A*算法](https://zhuanlan.zhihu.com/p/1960099548056781292) |
+|test_RRT.py | [避障轨迹规划RRT算法](https://zhuanlan.zhihu.com/p/2094061162354815462) |
 |test_collision.py | 碰撞检测：几何简化，[Link1](https://zhuanlan.zhihu.com/p/1977502768504792829)，[Link2](https://zhuanlan.zhihu.com/p/1985101999377760977) |
 |test_collision_detection.py | 碰撞检测：基本测试，[Link1](https://zhuanlan.zhihu.com/p/1977502768504792829)，[Link2](https://zhuanlan.zhihu.com/p/1985101999377760977) |
 |ur5_self_collision.py | [机器人自碰撞检测](https://zhuanlan.zhihu.com/p/2025330180743344443) |
